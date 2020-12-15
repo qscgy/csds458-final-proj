@@ -8,14 +8,16 @@ from sklearn import dummy
 from sklearn.manifold import TSNE
 from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
+import scipy.stats as st
 from sklearn.preprocessing import scale, StandardScaler, OneHotEncoder
-from sklearn.metrics import confusion_matrix, accuracy_score, classification_report, precision_recall_fscore_support
+from sklearn.metrics import accuracy_score, classification_report, precision_recall_fscore_support
 from sklearn.model_selection import train_test_split
-from sklearn.neural_network import MLPClassifier
 from keras import Sequential
 from keras.layers import Dense
 from sklearn.dummy import DummyClassifier
-
+import scipy.stats as ss
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import cross_val_score
 
 def load_data(fname):
     df = pd.read_excel(fname)
@@ -39,18 +41,20 @@ def train_net(df):
     # print(labels_ohe)
     X_train, X_test, y_train, y_test = train_test_split(data, labels_ohe, test_size=0.2, random_state=5)
     numepochs=1000
-    acc = np.zeros((4,7, numepochs))
-    acc_test = np.zeros((4,7))
+    acc = np.zeros((4,11, numepochs))
+    acc_test = np.zeros((4,11))
+    f1scores = np.zeros_like(acc_test)
+    act = 'sigmoid'
     for nl in [2,3,4,5]:
-        for nn in range(8,22,2):
+        for nn in range(2,22,2):
             print(f'Number of perceptrons per layer: {nn}')
             model=Sequential()
-            model.add(Dense(nn, input_dim=7, activation='sigmoid'))
-            model.add(Dense(nn, activation='sigmoid'))
-            model.add(Dense(nn, activation='sigmoid'))
-            model.add(Dense(nn, activation='sigmoid'))
+            model.add(Dense(nn, input_dim=7, activation=act))
+            model.add(Dense(nn, activation=act))
+            model.add(Dense(nn, activation=act))
+            model.add(Dense(nn, activation=act))
             if nl>=5:
-                model.add(Dense(nn, activation='sigmoid'))
+                model.add(Dense(nn, activation=act))
             model.add(Dense(3, activation='softmax'))
             model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
 
@@ -70,11 +74,13 @@ def train_net(df):
             print('Accuracy is:', a*100)
 
             print(classification_report(np.argmax(y_test, axis=1), y_pred_bool))
-            acc[nl-2,nn//2-4] = history.history['accuracy']
-            acc_test[nl-2, nn//2-4] = a
+            f1s = precision_recall_fscore_support(np.argmax(y_test, axis=1), y_pred_bool, average='weighted')[2]
+            acc[nl-2,nn//2-0] = history.history['accuracy']
+            acc_test[nl-2, nn//2-0] = a
+            f1scores[nl-2, nn//2-0] = f1s
             # plt.plot(history.history['accuracy'])
             # plt.show()
-    np.savez('results3.npz', acc=acc, acc_test=acc_test)
+    np.savez('results5.npz', acc=acc, acc_test=acc_test, f1scores=f1scores)
 
 def train_classifier(df):
     data = df[['D0A0', 'D0A6 and D2A0','D0S0', 'D0S6 and D2S0', 'D2A6', 'D2S6', 'D0A6']]
@@ -88,18 +94,19 @@ def train_classifier(df):
     X_test = scale(X_test)
     kernels = ['poly', 'rbf', 'linear', 'sigmoid']
 
-    dc = DummyClassifier(strategy='constant', constant=3)
-    dc.fit(X_train, y_train)
-    dummies = np.zeros(100)
-    for i in range (100):
-        preds = dc.predict(X_test)
-        # print(classification_report(y_test, preds))
-        dummies[i]=precision_recall_fscore_support(y_test, preds, average='weighted')[2]
-    print(dummies)
-    print(np.std(dummies))
-    print(np.mean(dummies))
+    # dc = DummyClassifier(strategy='constant', constant=3)
+    # dc.fit(X_train, y_train)
+    # dummies = np.zeros(100)
+    # for i in range (100):
+    #     preds = dc.predict(X_test)
+    #     # print(classification_report(y_test, preds))
+    #     # dummies[i]=precision_recall_fscore_support(y_test, preds, average='weighted')[2]
+    #     dummies[i]=accuracy_score(y_test, preds)
+    # # print(dummies)
+    # print(np.std(dummies)/5)
+    # print(np.mean(dummies))
 
-    # for i in range(4):
+    # for i in range(len(kernels)):
     #     print(f'Kernel: {kernels[i]}')
     #     clf = svm.SVC(kernel=kernels[i])
     #     clf.fit(X_train, y_train)
@@ -111,6 +118,19 @@ def train_classifier(df):
     #     print(y_test)
     #     print(classification_report(y_test, preds))
 
+    clf = RandomForestClassifier()
+    clf.fit(X_train, y_train)
+
+    preds = clf.predict(X_test)
+    # prob_preds = clf.predict_proba(X_test)
+    # print(prob_preds)
+    print(preds)
+    print(y_test)
+    print(classification_report(y_test, preds))
+    xv = cross_val_score(clf, scale(data), labels, cv=5)
+    print(np.mean(xv))
+    print(st.t.interval(0.68, df=4, loc=np.mean(xv), scale=st.sem(xv)))
+
 data=load_data('data.xlsx')
-# train_classifier(data)
-train_net(data)
+train_classifier(data)
+# train_net(data)
